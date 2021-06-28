@@ -52,11 +52,11 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     BluetoothDevice mBTDevice;
 
-    Button play1;
-    Button play2;
+    Button btnSap; // btn Denoting button
+    Button btnSentryFire;
     Button btnONOFF;
     Button btnDiscover;
-    Button sendButton;
+    Button btnRefillAmmo;
     Button startConnection;
     ImageView sapperIcon;
     MediaPlayer mp;
@@ -166,10 +166,13 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         BroadcastReceiver mReceiver = new BroadcastReceiver() {
             @Override
             public void onReceive(Context context, Intent intent) {
-                String text = intent.getStringExtra("theMessage");
+                String receivedText = intent.getStringExtra("theMessage");
                 //message.append(text + "\n");
-                if(text.equals("h")){
-                    play2.performClick();
+                if(receivedText.equals("1")){ // sentry is firing
+                    btnSentryFire.performClick();
+                }
+                else if(receivedText.equals("2")){ // sentry is sapped
+                    btnSap.performClick();
                 }
             }
         };
@@ -181,7 +184,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         lvNewDevices.setOnItemClickListener(MainActivity.this);
 
         startConnection = (Button)findViewById(R.id.startConnection);
-        sendButton = (Button)findViewById(R.id.sendButton);
+        btnRefillAmmo = (Button)findViewById(R.id.btnRefillAmmo);
 
         btnONOFF.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -207,22 +210,25 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });
 
-        sendButton.setOnClickListener(new View.OnClickListener(){
+        btnRefillAmmo.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
-                byte[] bytes = "send info test".getBytes(Charset.defaultCharset());
-                mBluetoothConnection.write(bytes);
+                byte[] bytes = "3".getBytes(Charset.defaultCharset());
+     //oothConnection.write(bytes);
+                shells = 100;
+                ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells);
+                ammoAnim.start();
             }
         });
 
-        play1 = (Button)findViewById(R.id.button1);
+        btnSap = (Button)findViewById(R.id.button1);
         final MediaPlayer mp1 = MediaPlayer.create(this, R.raw.hud_warning);
-        play1.setOnClickListener(new View.OnClickListener() {
+        btnSap.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View view) {
                 //sentryHealthBar.startAnimation(animation);
                 String x = "h";
-                mBluetoothConnection.write(x.getBytes(Charset.defaultCharset()));
+                //mBluetoothConnection.write(x.getBytes(Charset.defaultCharset()));
                 mp1.setLooping(true);
                 mp1.start();
                 sentryHealthAnim();
@@ -240,9 +246,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });
 
-        play2 = (Button)findViewById(R.id.button2);
+        btnSentryFire = (Button)findViewById(R.id.button2);
         final MediaPlayer mp2 = MediaPlayer.create(this, R.raw.sentry_shoot);
-        play2.setOnClickListener(new View.OnClickListener(){
+        btnSentryFire.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
                 sentryShellAnim();
@@ -346,10 +352,10 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     }
 
     void sentryShellAnim(){
-        ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells-50);
+        ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells-10);
         ammoAnim.setDuration(3000);
         ammoAnim.start();
-        shells -= 50;
+        shells -= 10;
     }
 
     void sapperIconAnim(){
