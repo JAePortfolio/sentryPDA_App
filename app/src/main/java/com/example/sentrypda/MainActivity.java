@@ -18,6 +18,7 @@ import android.media.MediaPlayer;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.Looper;
 import android.os.ParcelUuid;
 import android.util.Log;
 import android.util.TypedValue;
@@ -51,17 +52,18 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
     private static final UUID MY_UUID_INSECURE =
             UUID.fromString("00001101-0000-1000-8000-00805f9b34fb");
     BluetoothDevice mBTDevice;
+    boolean bluetoothConnected = false;
 
     Button btnSap; // btn Denoting button
     Button btnSentryFire;
     Button btnONOFF;
     Button btnDiscover;
-    Button btnRefillAmmo;
+    Button btnResetSentry;
     Button startConnection;
-    ImageView sapperIcon;
+    ImageView sentryStatusIcon, wrenchIcon;
     MediaPlayer mp;
     ValueAnimator colorAnim;
-    ObjectAnimator sapperAnim, ammoAnim, sentryHealthAnim;
+    ObjectAnimator sentryStatusAnim, ammoAnim, sentryHealthAnim;
     ProgressBar ammoBar, sentryHealthBar;
     int shells = 100, sentryHealth = 100;
 
@@ -118,8 +120,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 // case 1: bonded already
                 if (mDevice.getBondState() == BluetoothDevice.BOND_BONDED){
                     Log.d(TAG, "BroadcasterReceiver: BOND_BONDED.");
-                    lvNewDevices.setVisibility(View.INVISIBLE);
                     mBTDevice = mDevice;
+                    lvNewDevices.setVisibility(View.GONE);
                 }
                 // case 2: creating bond
                 if (mDevice.getBondState() == BluetoothDevice.BOND_BONDING){
@@ -133,7 +135,6 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     };
 
-
     @Override
     protected void onDestroy(){
         Log.d(TAG, "onDestroy: called.");
@@ -143,12 +144,13 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         unregisterReceiver(mBroadcastReceiver4);
     }
 
+    /* ------------------------- Start up/Main --------------------------------- */
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        sapperIcon = (ImageView)findViewById(R.id.imageView2);
+        sentryStatusIcon = (ImageView)findViewById(R.id.imageViewSentryStatus);
 
         //final Animation animation = (Animation) AnimationUtils.loadAnimation(this, R.anim.sentryhealthanim);
         sentryHealthBar = (ProgressBar) findViewById(R.id.progressBar1);
@@ -160,6 +162,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         btnONOFF = (Button)findViewById(R.id.btnONOFF);
         mBluetoothAdapter = BluetoothAdapter.getDefaultAdapter();
         lvNewDevices = (ListView) findViewById(R.id.lvNewDevices);
+        lvNewDevices.setVisibility(View.INVISIBLE);
         mBTDevices = new ArrayList<>();
 
         // To receive the incomingMessage from the BluetoothConnectionService class
@@ -174,6 +177,9 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 else if(receivedText.equals("2")){ // sentry is sapped
                     btnSap.performClick();
                 }
+                else if(receivedText.equals("3")){ // sentry is unsapped
+
+                }
             }
         };
         LocalBroadcastManager.getInstance(this).registerReceiver(mReceiver, new IntentFilter("incomingMessage"));
@@ -183,8 +189,6 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         registerReceiver(mBroadcastReceiver4, filter);
         lvNewDevices.setOnItemClickListener(MainActivity.this);
 
-        startConnection = (Button)findViewById(R.id.startConnection);
-        btnRefillAmmo = (Button)findViewById(R.id.btnRefillAmmo);
 
         btnONOFF.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -194,6 +198,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });
 
+        /* ------- Discover devices on bluetooth -------- */
         btnDiscover = (Button)findViewById(R.id.btnDiscover);
         btnDiscover.setOnClickListener(new View.OnClickListener(){
             @Override
@@ -203,21 +208,34 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         });
 
+        /* ------- Start bluetooth connection ------- */
+        startConnection = (Button)findViewById(R.id.startConnection);
         startConnection.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
                 startConnection();
+                disableDebugButtons();
             }
         });
 
-        btnRefillAmmo.setOnClickListener(new View.OnClickListener(){
+        /* --------- Reset the sentry health and ammo to full ----------- */
+        btnResetSentry = (Button)findViewById(R.id.btnResetSentry);
+        btnResetSentry.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
                 byte[] bytes = "3".getBytes(Charset.defaultCharset());
-     //oothConnection.write(bytes);
+                //oothConnection.write(bytes);
                 shells = 100;
+                sentryHealth = 100;
                 ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells);
                 ammoAnim.start();
+                sentryHealthAnim = ObjectAnimator.ofInt(sentryHealthBar, "progress", sentryHealth);
+                sentryHealthAnim.start();
+                colorAnim.cancel();
+                float ht_px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 6, getResources().getDisplayMetrics());
+                sentryStatusAnim = ObjectAnimator.ofFloat(sentryStatusIcon, "translationY", -ht_px);
+                sentryStatusAnim.start();
+                sentryStatusIcon.setImageResource(0);
             }
         });
 
@@ -229,20 +247,24 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
                 //sentryHealthBar.startAnimation(animation);
                 String x = "h";
                 //mBluetoothConnection.write(x.getBytes(Charset.defaultCharset()));
+                sentryStatusIcon.setImageResource(R.drawable.sentry_status_sapper);
                 mp1.setLooping(true);
                 mp1.start();
                 sentryHealthAnim();
-                setIconAnimColor();
-                sapperIconAnim();
-                Handler handler = new Handler();
+                setSapperIconAnimColor();
+                sentryStatusIconAnim();
+                Handler handler = new Handler(Looper.getMainLooper());
                 handler.postDelayed(new Runnable(){
                     @Override
                     public void run() {
                         mp1.stop();
                         mp1.prepareAsync();
+                        sentryUnsapped();
                     }
                 }, 6000);
-                //sapperIcon.setBackgroundColor(Color.parseColor("#e73520"));
+                //sentryUnsapped();
+
+                //sentryStatusIcon.setBackgroundColor(Color.parseColor("#e73520"));
             }
         });
 
@@ -251,19 +273,91 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         btnSentryFire.setOnClickListener(new View.OnClickListener(){
             @Override
             public void onClick(View view){
-                sentryShellAnim();
-                mp2.setLooping(true);
-                mp2.start();
-                Handler handler = new Handler();
-                handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        mp2.stop();
-                        mp2.prepareAsync();
+                if(shells > 0 && shells <= 100){ // Only do if there's ammo
+                    sentryShellAnim();
+                    mp2.setLooping(true);
+                    mp2.start();
+                    Handler handler = new Handler();
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            mp2.stop();
+                            mp2.prepareAsync();
+                        }
+                    }, 3000);
+                    if(shells < 50){ // Alert that ammo is low
+                        setWrenchIconAnimColor();
                     }
-                }, 3000);
+                }
+                else; // Otherwise do nothing, will not fire
             }
         });
+    } /* ------------------ End of Start up/Main -------------------- */
+
+
+    void disableDebugButtons(){
+        //btnResetSentry.setEnabled(false);
+        btnSap.setEnabled(false);
+        btnSentryFire.setEnabled(false);
+    }
+
+    void sentryUnsapped(){
+        sentryStatusIcon.setImageResource(R.drawable.sentry_status_wrench);
+        if(sentryHealth < 80){
+            setWrenchIconAnimColor();
+        }
+    }
+
+    void setSapperIconAnimColor(){
+        int colorOne = Color.parseColor("#e73520");
+        int colorTwo = Color.parseColor("#d6cacb");
+        colorAnim = ValueAnimator.ofObject(new ArgbEvaluator(), colorOne, colorTwo);
+        colorAnim.setDuration(500); // milliseconds
+        colorAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animator) {
+                sentryStatusIcon.setBackgroundColor((int) animator.getAnimatedValue());
+            }
+        });
+        colorAnim.setRepeatCount(10);
+        colorAnim.setRepeatMode(ValueAnimator.REVERSE);
+        colorAnim.start();
+    }
+
+    void setWrenchIconAnimColor(){
+        int colorOne = Color.parseColor("#e73520");
+        int colorTwo = Color.parseColor("#d6cacb");
+        colorAnim = ValueAnimator.ofObject(new ArgbEvaluator(), colorOne, colorTwo);
+        colorAnim.setDuration(1000); // milliseconds
+        colorAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
+            @Override
+            public void onAnimationUpdate(ValueAnimator animator) {
+                sentryStatusIcon.setBackgroundColor((int) animator.getAnimatedValue());
+            }
+        });
+        colorAnim.setRepeatCount(Animation.INFINITE);
+        colorAnim.setRepeatMode(ValueAnimator.REVERSE); // What to do when animation reaches end
+        colorAnim.start();
+    }
+
+    void sentryShellAnim(){
+        ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells-10);
+        ammoAnim.setDuration(3000);
+        ammoAnim.start();
+        shells -= 10;
+    }
+
+    void sentryStatusIconAnim(){
+        float ht_px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 113, getResources().getDisplayMetrics());
+        sentryStatusAnim = ObjectAnimator.ofFloat(sentryStatusIcon, "translationY", ht_px);
+        sentryStatusAnim.setDuration(500);
+        sentryStatusAnim.start();
+    }
+
+    void sentryHealthAnim(){
+        sentryHealthAnim = ObjectAnimator.ofInt(sentryHealthBar, "progress", 0);
+        sentryHealthAnim.setDuration(6000);
+        sentryHealthAnim.start();
     }
 
     //create method for starting connection. Will crash if no pair first
@@ -271,13 +365,14 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         startBTConnection(mBTDevice,MY_UUID_INSECURE);
     }
 
-    /* Start the chat service meth*/
+    /* Start the chat service method*/
     public void startBTConnection(BluetoothDevice device, UUID uuid){
         Log.d(TAG, "startBTConnection: Initializing RFCom bluetooth connection.");
-
         mBluetoothConnection.startClient(device,uuid);
+        lvNewDevices.setVisibility(View.INVISIBLE);
     }
 
+    /* Enable or Disable Bluetooth */
     public void enableDisableBT(){
         if(mBluetoothAdapter == null){
             Log.d(TAG,"enableDisableBT: Does not have BT Capability");
@@ -299,6 +394,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     }
 
+    /* Discover Devices on Bluetooth Button */
     public void btnDiscover(View view){
         Log.d(TAG, "btnDiscover: Looking for unpaired devices. ");
 
@@ -313,6 +409,8 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             registerReceiver(mBroadcastReceiver3, discoverDevicesIntent);
         }
         if(!mBluetoothAdapter.isDiscovering()){
+            lvNewDevices.setVisibility(View.VISIBLE);
+
             // Check BT Permissions in manifest
             checkBTPermissions();
             mBluetoothAdapter.startDiscovery();
@@ -321,6 +419,7 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
         }
     }
 
+    /* ------- Check Bluetooth Permissions ------- */
     public void checkBTPermissions(){
         if(Build.VERSION.SDK_INT > Build.VERSION_CODES.LOLLIPOP){
             int permissionCheck = this.checkSelfPermission("Manifest.permission.ACCESS_FINE_LOCATION");
@@ -333,44 +432,6 @@ public class MainActivity extends AppCompatActivity implements AdapterView.OnIte
             }
         }
     }
-
-    void setIconAnimColor(){
-        int colorOne = Color.parseColor("#e73520");
-        int colorTwo = Color.parseColor("#d6cacb");
-        colorAnim = ValueAnimator.ofObject(new ArgbEvaluator(), colorOne, colorTwo);
-        colorAnim.setDuration(500); // milliseconds
-        colorAnim.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-            @Override
-            public void onAnimationUpdate(ValueAnimator animator) {
-                sapperIcon.setBackgroundColor((int) animator.getAnimatedValue());
-            }
-
-        });
-        colorAnim.setRepeatCount(10);
-        colorAnim.setRepeatMode(ValueAnimator.REVERSE);
-        colorAnim.start();
-    }
-
-    void sentryShellAnim(){
-        ammoAnim = ObjectAnimator.ofInt(ammoBar, "progress", shells-10);
-        ammoAnim.setDuration(3000);
-        ammoAnim.start();
-        shells -= 10;
-    }
-
-    void sapperIconAnim(){
-        float ht_px = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 113, getResources().getDisplayMetrics());
-        sapperAnim = ObjectAnimator.ofFloat(sapperIcon, "translationY", ht_px);
-        sapperAnim.setDuration(500);
-        sapperAnim.start();
-    }
-
-    void sentryHealthAnim(){
-        sentryHealthAnim = ObjectAnimator.ofInt(sentryHealthBar, "progress", 0);
-        sentryHealthAnim.setDuration(6000);
-        sentryHealthAnim.start();
-    }
-
     @Override
     public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
         // first cancel discovery when we start bonding to a device (not necessary to continue

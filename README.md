@@ -20,7 +20,7 @@ The STM part of the project can be found
 * LG V20 - Smartphone
 
 ## Author
-* **John Arena** - [JAeportfolio](https://github.com/JAePortfolio)
+* **John Arena** - [JAePortfolio](https://github.com/JAePortfolio)
 
 ## License
 This project is NOT open source.
